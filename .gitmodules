@@ -1,0 +1,3 @@
+[submodule "littlefs-python"]
+	path = littlefs-python
+	url = https://github.com/Dan-Kouba/littlefs-python
