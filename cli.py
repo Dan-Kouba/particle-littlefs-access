@@ -4,6 +4,8 @@ import subprocess
 import sys
 import os
 from datetime import datetime
+from ParticleUSB import ParticleUSB
+
 
 def run_shell_cmd(cmd):
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -18,10 +20,10 @@ def run_shell_cmd(cmd):
 def enterDFU():
     run_shell_cmd(['particle', 'usb', 'dfu'])
 
-def readFilesystem(filename):
-    run_shell_cmd(['dfu-util', '-d', ',2b04:d01a', '-a', '2', '-s', '0x80000000:4194304', '-U', filename])
+def readFilesystem(filename: str, size: int):
+    run_shell_cmd(['dfu-util', '-d', ',2b04:d01a', '-a', '2', '-s', '0x80000000:{}'.format(size), '-U', filename])
 
-def writeFilesystem(filename):
+def writeFilesystem(filename: str):
     print("Writing filesystem copy to device...")
     run_shell_cmd(['dfu-util', '-d', ',2b04:d01a', '-a', '2', '-s', '0x80000000', '-D', filename])
 
@@ -30,8 +32,8 @@ deviceos_block_size = 4096
 tracker_block_count = 1024  # 4MB of 8MB available
 gen3_block_count    = 512   # 2MB of 4MB available
 
-def mount_fs(filename):
-    _fs = LittleFS(block_size=deviceos_block_size, block_count=tracker_block_count, mount=False)
+def mount_fs(filename: str, block_count: int):
+    _fs = LittleFS(block_size=deviceos_block_size, block_count=block_count, mount=False)
     with open(filename, 'rb') as fh:
         _fs.context.buffer = bytearray(fh.read())
     _fs.mount()
@@ -76,6 +78,10 @@ class LittleFSCLI(Cmd):
 
     cur_dir = '/'
 
+    pusb = ParticleUSB()
+
+    block_count = 0
+
     def do_exit(self, inp):
         print("Bye")
         return True
@@ -85,18 +91,51 @@ class LittleFSCLI(Cmd):
 
     def do_dfu(self, inp):
         print("Putting device in DFU mode...")
-        enterDFU()
+        self.pusb.enter_dfu_mode()
 
     def help_dfu(self):
         print("Put a device in DFU mode")
 
     def do_fsread(self, inp):
-        if os.path.exists(self.local_file):
-            os.remove(self.local_file)
-        self.do_dfu('')
-        print("Creating local copy of device filesystem...")
-        readFilesystem(self.local_file)
+        devices = self.pusb.list_devices()
+        if len(devices) > 1:
+            for idx, device in enumerate(devices):
+                print("{}. {}: {}".format(idx+1, device.platform, device.deviceID))
+            while True:
+                try:
+                    choice = int(input("Which device do you want to read from? "))
+                    if choice in range(1, len(devices) + 1):
+                        device = devices[choice - 1]
+                        break
+                except ValueError:
+                    print("Invalid choice")
+                    continue
 
+        elif len(devices) == 1:
+            device = devices[0]
+
+        else:
+            print("No devices found")
+            return
+
+        if not device.is_gen3() and not device.is_tracker():
+            print("This utility only reads from Asset Tracker and Gen 3 devices")
+            return
+
+        print("Putting {} ({}) in DFU mode...".format(device.platform, device.deviceID))
+        self.pusb.enter_dfu_mode(device=device.deviceID)
+
+        print("Creating local copy of device filesystem...")
+        if device.is_gen3():
+            self.block_count = gen3_block_count
+        else:  # device.is_tracker():
+            self.block_count = tracker_block_count
+
+        if os.path.exists(self.local_file):
+            print("Deleting existing local filesystem copy")
+            os.remove(self.local_file)
+
+        readFilesystem(self.local_file, deviceos_block_size * self.block_count)
 
     def help_fsread(self):
         print("Make a local copy of a device's embedded filesystem. Device must be in DFU mode.")
@@ -128,7 +167,7 @@ class LittleFSCLI(Cmd):
     def do_mount(self, inp):
         self.mounted_file = inp if inp else self.local_file
         try:
-            self.fs = mount_fs(self.mounted_file)
+            self.fs = mount_fs(self.mounted_file, self.block_count)
             self.prompt = self.mounted_prompt.format(self.mounted_file)
             return
         except FileNotFoundError as e:
@@ -139,6 +178,7 @@ class LittleFSCLI(Cmd):
         self.fs = None
         self.mounted_file = ""
         self.prompt = self.unmounted_prompt
+        self.block_count = 0
 
     def help_mount(self):
         print("Mount local copy of device filesystem")
@@ -152,6 +192,7 @@ class LittleFSCLI(Cmd):
             self.fs = None
             self.mounted_file = ""
             self.prompt = self.unmounted_prompt
+            self.block_count = 0
         else:
             print("No filesystem mounted!")
 
