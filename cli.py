@@ -379,11 +379,45 @@ class LittleFSCLI(Cmd):
             print("No filesystem mounted!")
 
     # TODO: cd
-    # def do_cd(self, inp):
-    #     if self.fs:
-    #         pass
-    #     else:
-    #         print("No filesystem mounted!")
+    def do_cd(self, inp):
+        if self.fs:
+            cur_dir_split = self.cur_dir.split('/')
+            print("cur_dir_split: {}".format(cur_dir_split))
+
+            # Absolute path supplied
+            if inp.startswith('/'):
+                try:
+                    inp_stat = self.fs.stat(inp)
+                    print(inp_stat)
+                    if inp_stat.type == 34:
+                        self.cur_dir = inp
+                    else:
+                        print("cd: {}: No such file or directory".format(inp))
+                except errors.LittleFSError as e:
+                    if e.name == "ERR_NOENT":
+                        print("cd: {}: No such file or directory".format(inp))
+                    else:
+                        print("cd: {}: Error: {}".format(inp, e))
+
+            print("Current Directory: {}".format(self.cur_dir))
+        else:
+            print("No filesystem mounted!")
+
+    def complete_cd(self, text, line, start_index, end_index):
+        if text:
+            scan_dir = self.cur_dir
+            if text.endswith('/'):
+                scan_dir += text
+            return [
+                "{}{}".format(dir_item.name, "/" if dir_item.type == 34 else "")
+                for dir_item in self.fs.scandir(scan_dir)
+                if dir_item.startswith(text)
+            ]
+        else:
+            return [
+                "{}{}".format(dir_item.name, "/" if dir_item.type == 34 else "")
+                for dir_item in self.fs.scandir(self.cur_dir)
+            ]
 
     def do_mkdir(self, inp=''):
         if self.fs:
