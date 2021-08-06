@@ -381,25 +381,40 @@ class LittleFSCLI(Cmd):
     # TODO: cd
     def do_cd(self, inp):
         if self.fs:
-            cur_dir_split = self.cur_dir.split('/')
-            print("cur_dir_split: {}".format(cur_dir_split))
-
             # Absolute path supplied
             if inp.startswith('/'):
-                try:
-                    inp_stat = self.fs.stat(inp)
-                    print(inp_stat)
-                    if inp_stat.type == 34:
-                        self.cur_dir = inp
-                    else:
-                        print("cd: {}: No such file or directory".format(inp))
-                except errors.LittleFSError as e:
-                    if e.name == "ERR_NOENT":
-                        print("cd: {}: No such file or directory".format(inp))
-                    else:
-                        print("cd: {}: Error: {}".format(inp, e))
+                new_path = inp
 
-            print("Current Directory: {}".format(self.cur_dir))
+            # Relative path
+            else:
+                inp_split = inp.split('/')
+                cur_dir_split = self.cur_dir.split('/')
+
+                for cd_dir in inp_split:
+                    if cd_dir == '..':
+                        if len(cur_dir_split) > 1:
+                            cur_dir_split.pop()
+                        else:
+                            print("cd: {}: No such file or directory".format(inp))
+                            return
+                    else:
+                        cur_dir_split.append(cd_dir)
+
+                new_path = '/' + '/'.join(filter(None, cur_dir_split))
+
+            try:
+                new_path_stat = self.fs.stat(new_path)
+                if new_path_stat.type == 34:
+                    self.cur_dir = new_path
+                else:
+                    print("cd: {}: No such file or directory".format(new_path))
+            except errors.LittleFSError as e:
+                if e.name == "ERR_NOENT":
+                    print("cd: {}: No such file or directory".format(new_path))
+                else:
+                    print("cd: {}: Error: {}".format(new_path, e))
+
+            # print("New Directory: \"{}\"".format(self.cur_dir))
         else:
             print("No filesystem mounted!")
 
