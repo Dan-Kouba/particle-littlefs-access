@@ -220,22 +220,26 @@ class LittleFSCLI(Cmd):
     def do_save(self, inp=''):
         if self.fs:
             if inp:
-                if os.path.exists(os.path.dirname(os.path.abspath(inp))):
-                    if os.path.exists(inp):
+                if inp.find('~') != -1:
+                    save_path = os.path.expanduser(inp)
+                else:
+                    save_path = LOCAL_PATH + '/' + inp
+                if os.path.exists(os.path.dirname(save_path)):
+                    if os.path.exists(save_path):
                         confirm = input("File already exists, overwrite? [y/n] ")
                         if confirm.lower() != 'y':
                             return
 
                     # Do the copy
                     try:
-                        shutil.copy(LOCAL_PATH + '/' + LOCAL_FILENAME, os.path.dirname(os.path.abspath(inp)) + '/' + inp)
+                        shutil.copy(LOCAL_PATH + '/' + LOCAL_FILENAME, save_path)
                     except Exception as e:
                         print("Error copying file: {}".format(e))
                         return
                     finally:
-                        print("Saved filesystem copy to \"{}/{}\"".format(os.path.dirname(os.path.abspath(inp)), inp))
+                        print("Saved filesystem copy to \"{}\"".format(save_path))
                 else:
-                    print("Error: \"{}\" is not a valid path".format(inp))
+                    print("Error: \"{}\" is not a valid path".format(save_path))
             else:
                 print("Error: No path supplied. Usage is \'save <path>\'")
         else:
