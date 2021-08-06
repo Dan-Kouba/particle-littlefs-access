@@ -478,7 +478,7 @@ class LittleFSCLI(Cmd):
         if inp == 'x' or inp == 'q':
             return self.do_exit(inp)
 
-        print("Default: {}".format(inp))
+        print("Unknown Command: \"{}\"".format(inp))
 
     do_EOF = do_exit
     help_EOF = help_exit
