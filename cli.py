@@ -94,9 +94,10 @@ def list_files(startpath):
             print('{}{}'.format(subindent, f))
 
 class LittleFSCLI(Cmd):
-    prompt = 'lfs> '
-    mounted_prompt = "[{} | {}] lfs> "
-    unmounted_prompt = "lfs> "
+
+    mounted_prompt = "[{}] {}:{}$ "
+    unmounted_prompt = "$ "
+    prompt = unmounted_prompt
 
     intro = "Particle LittleFS Command Line Utility"
 
@@ -104,6 +105,18 @@ class LittleFSCLI(Cmd):
     fs_filename = ""
     cur_dir = '/'
     target_device = None
+
+    def postcmd(self, stop: bool, line: str) -> bool:
+        if self.target_device or self.fs:
+            self.prompt = self.mounted_prompt.format(
+                self.target_device.device_id if self.target_device else "<No Target>",
+                self.fs_filename if self.fs else "<No FS>",
+                self.cur_dir
+            )
+        else:
+            self.prompt = self.unmounted_prompt
+
+        return False # continue execution
 
     def do_exit(self, inp):
         print("Bye")
@@ -156,13 +169,8 @@ class LittleFSCLI(Cmd):
         else:
             print("No devices found!")
 
-        if self.target_device or self.fs:
-            self.prompt = self.mounted_prompt.format(
-                self.target_device.device_id if self.target_device else "<No Target>",
-                self.fs_filename if self.fs else "<No FS>"
-            )
-        else:
-            self.prompt = self.unmounted_prompt
+    def help_target(self):
+        print("Set target Particle device")
 
     def do_fsread(self, inp=''):
         if not self.target_device:
@@ -182,7 +190,7 @@ class LittleFSCLI(Cmd):
         print("Wrote filesystem to local temporary file: \"{}\". Use \'mount\' to mount it\n".format(LOCAL_FILENAME))
 
     def help_fsread(self):
-        print("Make a local copy of a device's embedded filesystem. Device must be in DFU mode.")
+        print("Make a local copy of a device's embedded filesystem")
 
     # TODO: Add filename argument
     # TODO: Add --nobackup flag to skip read & backup
@@ -206,16 +214,19 @@ class LittleFSCLI(Cmd):
             writeFilesystem(LOCAL_FILENAME, self.target_device)
             print("Wrote new filesystem to device")
         else:
-            print("No local filesystem copy exists to write! Use fsread first.")
+            print("No local filesystem copy exists to write! Use \'fsread\' first.")
+
+    def help_fswrite(self):
+        print("Write local filesystem to device")
 
     # TODO: Add "write backup" function which allows you to select a backup image from the backups/ folder and write it
-    def do_restorefs(self, inp=''):
+    def do_fsrestore(self, inp=''):
         print("Available backup images:")
         for file in os.listdir("backups/"):
             print("\t" + file)
 
-    def help_save(self):
-        print("Save a copy of the temporary filesystem read out from a device. Usage: \'save <path>\'")
+    def help_fsrestore(self):
+        print("Unimplemented")
 
     def do_save(self, inp=''):
         if self.fs:
@@ -246,6 +257,9 @@ class LittleFSCLI(Cmd):
             print("No filesystem mounted! Use \'mount\' to mount one.")
             return
 
+    def help_save(self):
+        print("Save a copy of the temporary filesystem read out from a device. Usage: \'save <path>\'")
+
     def do_mount(self, inp=''):
         self.fs = None
         self.fs_filename = inp if inp else LOCAL_FILENAME
@@ -255,14 +269,6 @@ class LittleFSCLI(Cmd):
             print("mount: {}: Not a file".format(self.fs_filename))
         except errors.LittleFSError as e:
             print(e)
-        finally:
-            if self.target_device or self.fs:
-                self.prompt = self.mounted_prompt.format(
-                    self.target_device.device_id if self.target_device else "<No Target>",
-                    self.fs_filename if self.fs else "<No FS>"
-                )
-            else:
-                self.prompt = self.unmounted_prompt
 
     def help_mount(self):
         print("Mount local copy of device filesystem")
@@ -277,13 +283,8 @@ class LittleFSCLI(Cmd):
         else:
             print("No filesystem mounted!")
 
-        if self.target_device or self.fs:
-            self.prompt = self.mounted_prompt.format(
-                self.target_device.device_id if self.target_device else "<No Target>",
-                self.fs_filename if self.fs else "<No FS>"
-            )
-        else:
-            self.prompt = self.unmounted_prompt
+    def help_unmount(self):
+        print("Unmount local copy of device filesystem")
 
     def do_sync(self, inp=''):
         if self.fs:
@@ -292,6 +293,9 @@ class LittleFSCLI(Cmd):
             print("Wrote filesystem to file: \"{}\"".format(LOCAL_FILENAME))
         else:
             print("No filesystem mounted!")
+
+    def help_sync(self):
+        print("Save in-memory filesystem changes to file")
 
     def do_tree(self, inp=''):
         if self.fs:
@@ -309,6 +313,9 @@ class LittleFSCLI(Cmd):
                 print(line)
         else:
             print("No filesystem mounted!")
+
+    def help_tree(self):
+        print("Print a filesystem tree")
 
     def do_ls(self, inp=''):
         if self.fs:
@@ -467,7 +474,9 @@ class LittleFSCLI(Cmd):
         else:
             print("No filesystem mounted!")
 
-    # TODO: extract
+    def help_insert(self):
+        print("Insert a file from your computer into the LittleFS filesystem")
+
     def do_extract(self, inp=''):
         if self.fs:
             paths = inp.split(" ")
@@ -505,6 +514,9 @@ class LittleFSCLI(Cmd):
                 print("usage: cp [local_path] [path_to]")
         else:
             print("No filesystem mounted!")
+
+    def help_extract(self):
+        print("Extract a file from the LittleFS filesystem to your computer")
 
     def default(self, inp=''):
         if inp == 'x' or inp == 'q':
