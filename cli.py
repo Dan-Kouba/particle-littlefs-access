@@ -194,7 +194,7 @@ class LittleFSCLI(Cmd):
             # TODO: Add some sanity checking here - file size since we know it, maybe try to mount it first?
             self.do_dfu()
 
-            backup_fn = "backup_{}.littlefs".format(datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p"))
+            backup_fn = "{}-{}.littlefs".format(self.target_device.device_id, datetime.now().strftime("%Y.%m.%d-%H.%M.%S"))
             print("Backing up existing filesystem...")
             readFilesystem("backups/" + backup_fn, self.target_device)
             print("Device filesystem backed up to \"{}\"".format(backup_fn))
