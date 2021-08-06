@@ -104,8 +104,6 @@ class LittleFSCLI(Cmd):
     cur_dir = '/'
     target_device = None
 
-    block_count = 0
-
     def do_exit(self, inp):
         print("Bye")
         return True
