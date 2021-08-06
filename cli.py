@@ -20,24 +20,53 @@ def run_shell_cmd(cmd):
 def enterDFU():
     run_shell_cmd(['particle', 'usb', 'dfu'])
 
-def readFilesystem(filename: str, size: int):
-    run_shell_cmd(['dfu-util', '-d', ',2b04:d01a', '-a', '2', '-s', '0x80000000:{}'.format(size), '-U', filename])
+def readFilesystem(filename: str, device: ParticleUSB.DeviceInfo):
+    run_shell_cmd(['dfu-util', '-d', ',{vid:04x}:{pid:04x}'.format(
+        vid=device.platform.vid, pid=device.platform.pid_dfu
+    ), '-a', '2', '-s', '0x80000000:{bytes}'.format(
+        bytes=device.platform.fs_block_size * device.platform.user_block_count
+    ), '-U', filename])
 
-def writeFilesystem(filename: str):
+def writeFilesystem(filename: str, device: ParticleUSB.DeviceInfo):
     print("Writing filesystem copy to device...")
-    run_shell_cmd(['dfu-util', '-d', ',2b04:d01a', '-a', '2', '-s', '0x80000000', '-D', filename])
+    run_shell_cmd(['dfu-util', '-d', ',{vid:04x}:{pid:04x}'.format(
+        vid=device.platform.vid, pid=device.platform.pid_dfu
+    ), '-a', '2', '-s', '0x80000000', '-D', filename])
 
-# Particle DeviceOS configuration options
-deviceos_block_size = 4096
-tracker_block_count = 1024  # 4MB of 8MB available
-gen3_block_count    = 512   # 2MB of 4MB available
+def mount_fs(filename: str, block_size=4096):
+    block_count = 0
 
-def mount_fs(filename: str, block_count: int):
-    _fs = LittleFS(block_size=deviceos_block_size, block_count=block_count, mount=False)
-    with open(filename, 'rb') as fh:
-        _fs.context.buffer = bytearray(fh.read())
-    _fs.mount()
-    return _fs
+    if os.path.exists(filename):
+        fs_file_size = os.path.getsize(filename)
+        if fs_file_size == 2097152:
+            block_count = 512  # 2MB for Argon/Boron/BSoM (512 * 4096)
+            print('Mounting 2MB (Argon/Boron/BSoM) filesystem from file: \"{}\"'.format(filename))
+        elif fs_file_size == 4194304:
+            block_count = 1024  # 4MB for Tracker (1024 * 4096)
+            print('Mounting 4MB (Tracker) filesystem from file: \"{}\"'.format(filename))
+        else:
+            print("Mount failed: file \"{}\" wrong size (expected [2097152, 4194304])".format(filename))
+            _fs = None
+            return _fs
+
+    # File does not exist
+    else:
+        print("Mount failed: file \"{}\" does not exist".format(filename))
+        _fs = None
+        return _fs
+
+    # Passed our checks — try mounting
+    try:
+        _fs = LittleFS(block_size=block_size, block_count=block_count, mount=False)
+        with open(filename, 'rb') as fh:
+            _fs.context.buffer = bytearray(fh.read())
+        _fs.mount()
+    except Exception as e:
+        print("Failed to mount file \"{}\" with error: \"{}\"".format(filename, e))
+        _fs = None
+    finally:
+        return _fs
+
 
 def tree(_fs, root, prefix=''):
     # https://stackoverflow.com/questions/9727673/list-directory-tree-structure-in-python
@@ -79,6 +108,7 @@ class LittleFSCLI(Cmd):
     cur_dir = '/'
 
     pusb = ParticleUSB()
+    device = None
 
     block_count = 0
 
@@ -105,55 +135,52 @@ class LittleFSCLI(Cmd):
                 try:
                     choice = int(input("Which device do you want to read from? "))
                     if choice in range(1, len(devices) + 1):
-                        device = devices[choice - 1]
+                        self.device = devices[choice - 1]
                         break
                 except ValueError:
                     print("Invalid choice")
                     continue
 
         elif len(devices) == 1:
-            device = devices[0]
+            self.device = devices[0]
 
         else:
             print("No devices found")
             return
 
-        if not device.is_gen3() and not device.is_tracker():
-            print("This utility only reads from Asset Tracker and Gen 3 devices")
+        if not self.device.is_gen3() and not self.device.is_tracker():
+            print("This utility only works with Asset Tracker and Gen 3 devices")
             return
 
-        print("Putting {} ({}) in DFU mode...".format(device.platform, device.deviceID))
-        self.pusb.enter_dfu_mode(device=device.deviceID)
-
-        print("Creating local copy of device filesystem...")
-        if device.is_gen3():
-            self.block_count = gen3_block_count
-        else:  # device.is_tracker():
-            self.block_count = tracker_block_count
+        print("Putting {} ({}) in DFU mode...".format(self.device.deviceID, self.device.platform.name))
+        self.pusb.enter_dfu_mode(device=self.device.deviceID)
 
         if os.path.exists(self.local_file):
             print("Deleting existing local filesystem copy")
             os.remove(self.local_file)
 
-        readFilesystem(self.local_file, deviceos_block_size * self.block_count)
+        print("Creating local copy of device filesystem...")
+        readFilesystem(self.local_file, self.device)
 
     def help_fsread(self):
         print("Make a local copy of a device's embedded filesystem. Device must be in DFU mode.")
 
     def do_fswrite(self, inp):
+        # TODO: Add filename argument
+        # TODO: Add --nobackup flag to skip read & backup
         if os.path.exists(self.local_file):
             # TODO: Add some sanity checking here — file size since we know it, maybe try to mount it first?
             enterDFU()
 
             backup_fn = "backup_{}.littlefs".format(datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p"))
             print("Backing up existing filesystem...")
-            readFilesystem("backups/" + backup_fn)
+            readFilesystem("backups/" + backup_fn, self.device)
             print("Device filesystem backed up to \"{}\"".format(backup_fn))
 
             print()
 
             print("Writing local filesystem \"{}\" to device...".format(self.local_file))
-            writeFilesystem(self.local_file)
+            writeFilesystem(self.local_file, self.device)
             print("Wrote new filesystem to device")
         else:
             print("No local filesystem copy exists to write! Use fsread first.")
@@ -167,7 +194,7 @@ class LittleFSCLI(Cmd):
     def do_mount(self, inp):
         self.mounted_file = inp if inp else self.local_file
         try:
-            self.fs = mount_fs(self.mounted_file, self.block_count)
+            self.fs = mount_fs(self.mounted_file)
             self.prompt = self.mounted_prompt.format(self.mounted_file)
             return
         except FileNotFoundError as e:
@@ -178,7 +205,7 @@ class LittleFSCLI(Cmd):
         self.fs = None
         self.mounted_file = ""
         self.prompt = self.unmounted_prompt
-        self.block_count = 0
+        self.device = None
 
     def help_mount(self):
         print("Mount local copy of device filesystem")
@@ -192,7 +219,7 @@ class LittleFSCLI(Cmd):
             self.fs = None
             self.mounted_file = ""
             self.prompt = self.unmounted_prompt
-            self.block_count = 0
+            self.device = None
         else:
             print("No filesystem mounted!")
 
