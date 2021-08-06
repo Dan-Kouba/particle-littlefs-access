@@ -3,9 +3,11 @@ from littlefs import LittleFS, errors
 import subprocess
 import sys
 import os
+import shutil
 from datetime import datetime
 from ParticleUSB import ParticleUSB, ParticleDevice
 
+LOCAL_PATH = os.path.dirname(os.path.realpath(__file__))
 LOCAL_FILENAME = "temp.littlefs"
 
 def run_shell_cmd(cmd):
@@ -99,7 +101,6 @@ class LittleFSCLI(Cmd):
     intro = "Particle LittleFS Command Line Utility"
 
     fs = None
-    local_file = "copy.littlefs"
     fs_filename = ""
     cur_dir = '/'
     target_device = None
@@ -212,6 +213,34 @@ class LittleFSCLI(Cmd):
         print("Available backup images:")
         for file in os.listdir("backups/"):
             print("\t" + file)
+
+    def help_save(self):
+        print("Save a copy of the temporary filesystem read out from a device. Usage: \'save <path>\'")
+
+    def do_save(self, inp=''):
+        if self.fs:
+            if inp:
+                if os.path.exists(os.path.dirname(os.path.abspath(inp))):
+                    if os.path.exists(inp):
+                        confirm = input("File already exists, overwrite? [y/n] ")
+                        if confirm.lower() != 'y':
+                            return
+
+                    # Do the copy
+                    try:
+                        shutil.copy(LOCAL_PATH + '/' + LOCAL_FILENAME, os.path.dirname(os.path.abspath(inp)) + '/' + inp)
+                    except Exception as e:
+                        print("Error copying file: {}".format(e))
+                        return
+                    finally:
+                        print("Saved filesystem copy to \"{}/{}\"".format(os.path.dirname(os.path.abspath(inp)), inp))
+                else:
+                    print("Error: \"{}\" is not a valid path".format(inp))
+            else:
+                print("Error: No path supplied. Usage is \'save <path>\'")
+        else:
+            print("No filesystem mounted! Use \'mount\' to mount one.")
+            return
 
     def do_mount(self, inp=''):
         self.fs = None
