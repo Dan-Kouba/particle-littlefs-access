@@ -241,7 +241,6 @@ class LittleFSCLI(Cmd):
                 fh.write(self.fs.context.buffer)
             print("Wrote filesystem to file: \"{}\"".format(out_file))
             self.fs = None
-            self.target_device = None
         else:
             print("No filesystem mounted!")
 
