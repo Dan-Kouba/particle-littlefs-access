@@ -406,12 +406,12 @@ class LittleFSCLI(Cmd):
     def complete_cd(self, text, line, start_index, end_index):
         if text:
             scan_dir = self.cur_dir
-            if text.endswith('/'):
-                scan_dir += text
+            # if text.endswith('/'):
+            #     scan_dir += text
             return [
                 "{}{}".format(dir_item.name, "/" if dir_item.type == 34 else "")
-                for dir_item in self.fs.scandir(scan_dir)
-                if dir_item.startswith(text)
+                for dir_item in self.fs.scandir(self.cur_dir)
+                if dir_item.name.startswith(text)
             ]
         else:
             return [
