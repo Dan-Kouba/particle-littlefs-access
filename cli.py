@@ -422,10 +422,11 @@ class LittleFSCLI(Cmd):
     def do_mkdir(self, inp=''):
         if self.fs:
             if inp:
+                dir_to_make = self.cur_dir + '/' + inp
                 try:
-                    self.fs.mkdir(inp)
+                    self.fs.mkdir(dir_to_make)
                 except FileExistsError as e:
-                    print("mkdir: {}: Directory exists".format(inp))
+                    print("mkdir: {}: Directory exists".format(dir_to_make))
                 except errors.LittleFSError as e:
                     print(e)
             else:
