@@ -223,8 +223,9 @@ class LittleFSCLI(Cmd):
         if not self.target_device:
             self.do_target()
 
-        self.do_dfu()
-        # ParticleUSB.enter_dfu_mode(device=self.target_device.device_id)
+        if self.target_device:
+            self.do_dfu()
+            # ParticleUSB.enter_dfu_mode(device=self.target_device.device_id)
 
         if os.path.exists(LOCAL_FILENAME):
             # print("Deleting existing local filesystem copy")
@@ -245,9 +246,10 @@ class LittleFSCLI(Cmd):
         if not self.target_device:
             self.do_target()
 
-        if os.path.exists(LOCAL_FILENAME):
-            # TODO: Add some sanity checking here - file size since we know it, maybe try to mount it first?
-            self.do_dfu()
+        if self.target_device:
+            if os.path.exists(LOCAL_FILENAME):
+                # TODO: Add some sanity checking here - file size since we know it, maybe try to mount it first?
+                self.do_dfu()
 
             backup_fn = "{}-{}.littlefs".format(self.target_device.device_id, datetime.now().strftime("%Y.%m.%d-%H.%M.%S"))
             print("Backing up existing filesystem...")
