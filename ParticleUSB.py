@@ -20,6 +20,9 @@ class ParticlePlatform:
         self.fs_block_size = fs_block_size
         self.user_block_count = user_block_count
 
+    def fs_size_bytes(self):
+        return self.fs_block_size & self.user_block_count
+
     def is_gen3(self):
         return self.id > 10
 
