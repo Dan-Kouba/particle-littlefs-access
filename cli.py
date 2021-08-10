@@ -6,6 +6,15 @@ import os
 import shutil
 from datetime import datetime
 from ParticleUSB import ParticleUSB, ParticleDevice
+
+try:
+    import readline
+except ImportError:
+    readline = None
+
+histfile = 'someconsole_history'
+histfile_size = 1000
+
 import logging
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
@@ -112,6 +121,15 @@ class LittleFSCLI(Cmd):
     fs_filename = ""
     cur_dir = '/'
     target_device = None
+
+    def preloop(self):
+        if readline and os.path.exists(histfile):
+            readline.read_history_file(histfile)
+
+    def postloop(self):
+        if readline:
+            readline.set_history_length(histfile_size)
+            readline.write_history_file(histfile)
 
     def postcmd(self, stop: bool, line: str) -> bool:
         if self.target_device or self.fs:
