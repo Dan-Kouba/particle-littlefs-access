@@ -473,7 +473,7 @@ class LittleFSCLI(Cmd):
                 if new_path_stat.type == 34:
                     self.cur_dir = new_path
                 else:
-                    print("cd: {}: No such file or directory".format(new_path))
+                    print("cd: {}: Not a directory".format(new_path))
             except errors.LittleFSError as e:
                 if e.name == "ERR_NOENT":
                     print("cd: {}: No such file or directory".format(new_path))
