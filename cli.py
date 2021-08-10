@@ -6,6 +6,8 @@ import os
 import shutil
 from datetime import datetime
 from ParticleUSB import ParticleUSB, ParticleDevice
+import logging
+logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 LOCAL_PATH = os.path.dirname(os.path.realpath(__file__))
 LOCAL_FILENAME = "temp.littlefs"
@@ -117,6 +119,51 @@ class LittleFSCLI(Cmd):
             self.prompt = self.unmounted_prompt
 
         return False # continue execution
+
+    def fs_autocomplete(self, text, line, start_index, end_index):
+        search_dir = self.cur_dir
+        # TODO: need to grab the last arg, rather than the first
+        arg_start_idx = line.index(' ') + 1
+        if start_index > arg_start_idx:
+            search_dir += line[arg_start_idx:start_index]
+        logging.debug(f"Tab completion: {{search_dir: {search_dir}}}")
+
+        if text:
+            results = [
+                "{}{}".format(dir_item.name, "/" if dir_item.type == 34 else "")
+                for dir_item in self.fs.scandir(search_dir)
+                if dir_item.name.startswith(text)
+            ]
+        else:
+            results = [
+                "{}{}".format(dir_item.name, "/" if dir_item.type == 34 else "")
+                for dir_item in self.fs.scandir(search_dir)
+            ]
+
+        logging.debug(f"fs_autocomplete(): {{search_text: {text}, line: {line}, search_dir: {search_dir}, start_index: {start_index}, end_index: {end_index}, results: {results}}}")
+        return results
+
+    def os_autocomplete(self, text, line, start_index, end_index):
+        search_dir = LOCAL_PATH
+        arg_start_idx = line.index(' ') + 1
+        if start_index > arg_start_idx:
+            search_dir += line[arg_start_idx:start_index]
+        logging.debug(f"Tab completion: {{search_dir: {search_dir}}}")
+
+        if text:
+            results = [
+                "{}{}".format(dir_item.name, "/" if dir_item.is_dir() else "")
+                for dir_item in os.scandir(search_dir)
+                if dir_item.name.startswith(text)
+            ]
+        else:
+            results = [
+                "{}{}".format(dir_item.name, "/" if dir_item.is_dir() else "")
+                for dir_item in os.scandir(search_dir)
+            ]
+
+        logging.debug(f"os_autocomplete: {{search_text: {text}, line: {line}, search_dir: {search_dir}, start_index: {start_index}, end_index: {end_index}, results: {results}}}")
+        return results
 
     def do_exit(self, inp):
         print("Bye")
@@ -257,18 +304,25 @@ class LittleFSCLI(Cmd):
             print("No filesystem mounted! Use \'mount\' to mount one.")
             return
 
+    def complete_save(self, text, line, start_index, end_index):
+        return self.os_autocomplete(text, line, start_index, end_index)
+
     def help_save(self):
         print("Save a copy of the temporary filesystem read out from a device. Usage: \'save <path>\'")
 
     def do_mount(self, inp=''):
         self.fs = None
         self.fs_filename = inp if inp else LOCAL_FILENAME
+        self.cur_dir = '/'
         try:
             self.fs = mount_fs(self.fs_filename)
         except FileNotFoundError as e:
             print("mount: {}: Not a file".format(self.fs_filename))
         except errors.LittleFSError as e:
             print(e)
+
+    def complete_mount(self, text, line, start_index, end_index):
+        return self.os_autocomplete(text, line, start_index, end_index)
 
     def help_mount(self):
         print("Mount local copy of device filesystem")
@@ -314,6 +368,9 @@ class LittleFSCLI(Cmd):
         else:
             print("No filesystem mounted!")
 
+    def complete_tree(self, text, line, start_index, end_index):
+        return self.fs_autocomplete(text, line, start_index, end_index)
+
     def help_tree(self):
         print("Print a filesystem tree")
 
@@ -332,6 +389,9 @@ class LittleFSCLI(Cmd):
                     print(e)
         else:
             print("No filesystem mounted!")
+
+    def complete_ls(self, text, line, start_index, end_index):
+        return self.fs_autocomplete(text, line, start_index, end_index)
 
     def do_cat(self, inp=''):
         if self.fs:
@@ -362,6 +422,9 @@ class LittleFSCLI(Cmd):
         else:
             print("No filesystem mounted!")
 
+    def complete_cat(self, text, line, start_index, end_index):
+        return self.fs_autocomplete(text, line, start_index, end_index)
+
     def do_rm(self, inp=''):
         if self.fs:
             try:
@@ -377,6 +440,9 @@ class LittleFSCLI(Cmd):
 
         else:
             print("No filesystem mounted!")
+
+    def complete_rm(self, text, line, start_index, end_index):
+        return self.fs_autocomplete(text, line, start_index, end_index)
 
     # TODO: cd
     def do_cd(self, inp):
@@ -419,20 +485,7 @@ class LittleFSCLI(Cmd):
             print("No filesystem mounted!")
 
     def complete_cd(self, text, line, start_index, end_index):
-        if text:
-            scan_dir = self.cur_dir
-            # if text.endswith('/'):
-            #     scan_dir += text
-            return [
-                "{}{}".format(dir_item.name, "/" if dir_item.type == 34 else "")
-                for dir_item in self.fs.scandir(self.cur_dir)
-                if dir_item.name.startswith(text)
-            ]
-        else:
-            return [
-                "{}{}".format(dir_item.name, "/" if dir_item.type == 34 else "")
-                for dir_item in self.fs.scandir(self.cur_dir)
-            ]
+        return self.fs_autocomplete(text, line, start_index, end_index)
 
     def do_mkdir(self, inp=''):
         if self.fs:
@@ -448,6 +501,9 @@ class LittleFSCLI(Cmd):
                 print("usage: mkdir [directory]")
         else:
             print("No filesystem mounted!")
+
+    def complete_mkdir(self, text, line, start_index, end_index):
+        return self.fs_autocomplete(text, line, start_index, end_index)
 
     def do_cp(self, inp=''):
         if self.fs:
@@ -481,6 +537,9 @@ class LittleFSCLI(Cmd):
                 print("usage: cp [path_from] [path_to]")
         else:
             print("No filesystem mounted!")
+
+    def complete_cp(self, text, line, start_index, end_index):
+        return self.fs_autocomplete(text, line, start_index, end_index)
 
     def do_insert(self, inp=''):
         if self.fs:
