@@ -21,13 +21,21 @@ logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 LOCAL_PATH = os.path.dirname(os.path.realpath(__file__))
 LOCAL_FILENAME = "temp.littlefs"
 
-def run_shell_cmd(cmd):
+def run_shell_cmd(cmd, filter_str='', indent_char='\t'):
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    sys.stdout.buffer.write(b'\t')
+    line_buffer = b''
     for c in iter(lambda: process.stdout.read(1), b''):
-        sys.stdout.buffer.write(c)
-        if c == b'\n' or c == b'\r':
-            sys.stdout.buffer.write(b'\t')
+        line_buffer += c
+        if c == b'\r' or c == b'\n':
+            out_str = line_buffer.decode("utf-8")
+            if filter_str and not out_str.startswith(filter_str):
+                line_buffer = b''
+                continue
+
+            sys.stdout.write(indent_char)
+            sys.stdout.write(out_str)
+            line_buffer = b''
+
     process.wait()
     print()
 
@@ -36,14 +44,16 @@ def readFilesystem(filename: str, device: ParticleDevice):
                    '-d', f',{device.platform.vid:04x}:{device.platform.pid_dfu:04x}',
                    '-a', '2',
                    '-s', f'0x80000000:{device.platform.fs_size_bytes()}',
-                   '-U', filename])
+                   '-U', filename],
+                  filter_str='Upload')
 
 def writeFilesystem(filename: str, device: ParticleDevice):
     run_shell_cmd(['dfu-util',
                    '-d', f',{device.platform.vid:04x}:{device.platform.pid_dfu:04x}',
                    '-a', '2',
                    '-s', '0x80000000',
-                   '-D', filename])
+                   '-D', filename],
+                  filter_str='Download')
 
 def mount_fs(filename: str, block_size=4096):
     _fs = None
