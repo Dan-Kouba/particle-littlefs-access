@@ -227,15 +227,15 @@ class LittleFSCLI(Cmd):
             self.do_dfu()
             # ParticleUSB.enter_dfu_mode(device=self.target_device.device_id)
 
-        if os.path.exists(LOCAL_FILENAME):
-            # print("Deleting existing local filesystem copy")
-            os.remove(LOCAL_FILENAME)
+            if os.path.exists(LOCAL_FILENAME):
+                # print("Deleting existing local filesystem copy")
+                os.remove(LOCAL_FILENAME)
 
-        print("Creating local copy of device filesystem...")
-        print()
-        readFilesystem(LOCAL_FILENAME, self.target_device)
+            print("Creating local copy of device filesystem...")
+            print()
+            readFilesystem(LOCAL_FILENAME, self.target_device)
 
-        print("Wrote filesystem to local temporary file: \"{}\". Use \'mount\' to mount it\n".format(LOCAL_FILENAME))
+            print("Wrote filesystem to local temporary file: \"{}\". Use \'mount\' to mount it\n".format(LOCAL_FILENAME))
 
     def help_fsread(self):
         print("Make a local copy of a device's embedded filesystem")
@@ -251,19 +251,19 @@ class LittleFSCLI(Cmd):
                 # TODO: Add some sanity checking here - file size since we know it, maybe try to mount it first?
                 self.do_dfu()
 
-            backup_fn = "{}-{}.littlefs".format(self.target_device.device_id, datetime.now().strftime("%Y.%m.%d-%H.%M.%S"))
-            print("Backing up existing filesystem...")
-            readFilesystem("backups/" + backup_fn, self.target_device)
-            print("Device filesystem backed up to \"{}\"".format(backup_fn))
-            print()
+                backup_fn = "{}-{}.littlefs".format(self.target_device.device_id, datetime.now().strftime("%Y.%m.%d-%H.%M.%S"))
+                print("Backing up existing filesystem...")
+                readFilesystem("backups/" + backup_fn, self.target_device)
+                print("Device filesystem backed up to \"{}\"".format(backup_fn))
+                print()
 
-            print("Writing local filesystem \"{}\" to device...".format(LOCAL_FILENAME))
-            print("NOTE: Ignore warnings about DFU Suffix being incorrect!")
-            print()
-            writeFilesystem(LOCAL_FILENAME, self.target_device)
-            print("Wrote new filesystem to device")
-        else:
-            print("No local filesystem copy exists to write! Use \'fsread\' first.")
+                print("Writing local filesystem \"{}\" to device...".format(LOCAL_FILENAME))
+                print("NOTE: Ignore warnings about DFU Suffix being incorrect!")
+                print()
+                writeFilesystem(LOCAL_FILENAME, self.target_device)
+                print("Wrote new filesystem to device")
+            else:
+                print("No local filesystem copy exists to write! Use \'fsread\' first.")
 
     def help_fswrite(self):
         print("Write local filesystem to device")
@@ -334,6 +334,7 @@ class LittleFSCLI(Cmd):
                 fh.write(self.fs.context.buffer)
             print("Wrote filesystem to file: \"{}\"".format(out_file))
             self.fs = None
+            self.cur_dir = '/'
         else:
             print("No filesystem mounted!")
 
