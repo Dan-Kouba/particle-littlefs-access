@@ -293,11 +293,9 @@ class LittleFSCLI(Cmd):
                     # Do the copy
                     try:
                         shutil.copy(LOCAL_PATH + '/' + LOCAL_FILENAME, save_path)
+                        print("Saved filesystem copy to \"{}\"".format(save_path))
                     except Exception as e:
                         print("Error copying file: {}".format(e))
-                        return
-                    finally:
-                        print("Saved filesystem copy to \"{}\"".format(save_path))
                 else:
                     print("Error: \"{}\" is not a valid path".format(save_path))
             else:
