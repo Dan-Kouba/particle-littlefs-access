@@ -23,47 +23,52 @@ def run_shell_cmd(cmd):
     print()
 
 def readFilesystem(filename: str, device: ParticleDevice):
-    run_shell_cmd(['dfu-util', '-d', ',{vid:04x}:{pid:04x}'.format(
-        vid=device.platform.vid, pid=device.platform.pid_dfu
-    ), '-a', '2', '-s', '0x80000000:{bytes}'.format(
-        bytes=device.platform.fs_block_size * device.platform.user_block_count
-    ), '-U', filename])
+    run_shell_cmd(['dfu-util',
+                   '-d', f',{device.platform.vid:04x}:{device.platform.pid_dfu:04x}',
+                   '-a', '2',
+                   '-s', f'0x80000000:{device.platform.fs_size_bytes()}',
+                   '-U', filename])
 
 def writeFilesystem(filename: str, device: ParticleDevice):
-    run_shell_cmd(['dfu-util', '-d', ',{vid:04x}:{pid:04x}'.format(
-        vid=device.platform.vid, pid=device.platform.pid_dfu
-    ), '-a', '2', '-s', '0x80000000', '-D', filename])
+    run_shell_cmd(['dfu-util',
+                   '-d', f',{device.platform.vid:04x}:{device.platform.pid_dfu:04x}',
+                   '-a', '2',
+                   '-s', '0x80000000',
+                   '-D', filename])
 
 def mount_fs(filename: str, block_size=4096):
-    block_count = 0
+    _fs = None
 
     if os.path.exists(filename):
         fs_file_size = os.path.getsize(filename)
-        if fs_file_size == 2097152:
+        gen3_bytes = ParticleUSB.known_platforms['Argon'].fs_size_bytes()
+        tracker_bytes = ParticleUSB.known_platforms['Asset Tracker'].fs_size_bytes()
+
+        if fs_file_size == gen3_bytes:
             block_count = 512  # 2MB for Argon/Boron/BSoM (512 * 4096)
-            print('\"{}\" mounted as 2MB (Argon/Boron/BSoM) filesystem'.format(filename))
-        elif fs_file_size == 4194304:
+            print(f'\"{filename}\" mounted as 2MB (Argon/Boron/BSoM) filesystem')
+        elif fs_file_size == tracker_bytes:
             block_count = 1024  # 4MB for Tracker (1024 * 4096)
-            print('\"{}\" mounted as 4MB (Tracker) filesystem'.format(filename))
+            print(f'\"{filename}\" mounted as 4MB (Tracker) filesystem')
         else:
-            print("Mount failed: file \"{}\" wrong size (expected [2097152, 4194304])".format(filename))
+            print(f"Mount failed: file \"{filename}\" wrong size (expected {gen3_bytes}, {tracker_bytes}])")
             _fs = None
-            return _fs
+            return None
 
     # File does not exist
     else:
-        print("Mount failed: file \"{}\" does not exist".format(filename))
+        print(f"Mount failed: file \"{filename}\" does not exist")
         _fs = None
-        return _fs
+        return None
 
-    # Passed our checks — try mounting
+    # Passed our checks - try mounting
     try:
         _fs = LittleFS(block_size=block_size, block_count=block_count, mount=False)
         with open(filename, 'rb') as fh:
             _fs.context.buffer = bytearray(fh.read())
         _fs.mount()
     except Exception as e:
-        print("Failed to mount file \"{}\" with error: \"{}\"".format(filename, e))
+        print(f"Failed to mount file \"{filename}\" with error: \"{e}\"")
         _fs = None
     finally:
         return _fs
@@ -90,10 +95,10 @@ def list_files(startpath):
     for root, dirs, files in os.walk(startpath):
         level = root.replace(startpath, '').count(os.sep)
         indent = ' ' * 4 * (level)
-        print('{}{}/'.format(indent, os.path.basename(root)))
+        print(f'{indent}{os.path.basename(root)}/')
         subindent = ' ' * 4 * (level + 1)
         for f in files:
-            print('{}{}'.format(subindent, f))
+            print(f'{subindent}{f}')
 
 class LittleFSCLI(Cmd):
 
@@ -118,7 +123,7 @@ class LittleFSCLI(Cmd):
         else:
             self.prompt = self.unmounted_prompt
 
-        return False # continue execution
+        return False  # continue execution
 
     def fs_autocomplete(self, text, line, start_index, end_index):
         search_dir = self.cur_dir
@@ -152,13 +157,13 @@ class LittleFSCLI(Cmd):
 
         if text:
             results = [
-                "{}{}".format(dir_item.name, "/" if dir_item.is_dir() else "")
+                f"{dir_item.name}{'/' if dir_item.is_dir() else ''}"
                 for dir_item in os.scandir(search_dir)
                 if dir_item.name.startswith(text)
             ]
         else:
             results = [
-                "{}{}".format(dir_item.name, "/" if dir_item.is_dir() else "")
+                f"{dir_item.name}{'/' if dir_item.is_dir() else ''}"
                 for dir_item in os.scandir(search_dir)
             ]
 
@@ -188,7 +193,7 @@ class LittleFSCLI(Cmd):
         devices = ParticleUSB.list_devices()
         if len(devices) > 1:
             for idx, device in enumerate(devices):
-                print("{}. {}: {}".format(idx + 1, device.platform, device.device_id))
+                print(f"{idx+1}. {device.platform}: {device.device_id}")
             while True:
                 try:
                     choice = int(input("Which device do you want to target? "))
@@ -210,9 +215,7 @@ class LittleFSCLI(Cmd):
                 print("This utility only works with Asset Tracker and Gen 3 devices")
                 self.target_device = None
             else:
-                print("Selected device: {{name:\"{}\", platform:\"{}\", id:\"{}\"}}".format(
-                    self.target_device.name, self.target_device.platform.name, self.target_device.device_id
-                ))
+                print(f"Selected device: {{name:\"{self.target_device.name}\", platform:\"{self.target_device.platform.name}\", id:\"{self.target_device.device_id}\"}}")
         else:
             print("No devices found!")
 
@@ -235,7 +238,7 @@ class LittleFSCLI(Cmd):
             print()
             readFilesystem(LOCAL_FILENAME, self.target_device)
 
-            print("Wrote filesystem to local temporary file: \"{}\". Use \'mount\' to mount it\n".format(LOCAL_FILENAME))
+            print(f"Wrote filesystem to local temporary file: \"{LOCAL_FILENAME}\". Use \'mount\' to mount it\n")
 
     def help_fsread(self):
         print("Make a local copy of a device's embedded filesystem")
@@ -251,13 +254,13 @@ class LittleFSCLI(Cmd):
                 # TODO: Add some sanity checking here - file size since we know it, maybe try to mount it first?
                 self.do_dfu()
 
-                backup_fn = "{}-{}.littlefs".format(self.target_device.device_id, datetime.now().strftime("%Y.%m.%d-%H.%M.%S"))
+                backup_fn = f"{self.target_device.device_id}-{datetime.now().strftime('%Y.%m.%d-%H.%M.%S')}.littlefs"
                 print("Backing up existing filesystem...")
                 readFilesystem("backups/" + backup_fn, self.target_device)
-                print("Device filesystem backed up to \"{}\"".format(backup_fn))
+                print(f"Device filesystem backed up to \"{backup_fn}\"")
                 print()
 
-                print("Writing local filesystem \"{}\" to device...".format(LOCAL_FILENAME))
+                print(f"Writing local filesystem \"{LOCAL_FILENAME}\" to device...")
                 print("NOTE: Ignore warnings about DFU Suffix being incorrect!")
                 print()
                 writeFilesystem(LOCAL_FILENAME, self.target_device)
@@ -286,18 +289,18 @@ class LittleFSCLI(Cmd):
                     save_path = LOCAL_PATH + '/' + inp
                 if os.path.exists(os.path.dirname(save_path)):
                     if os.path.exists(save_path):
-                        confirm = input("File already exists, overwrite? [y/n] ")
+                        confirm = input("File already exists, overwrite? [Y/n] ")
                         if confirm.lower() != 'y':
                             return
 
                     # Do the copy
                     try:
                         shutil.copy(LOCAL_PATH + '/' + LOCAL_FILENAME, save_path)
-                        print("Saved filesystem copy to \"{}\"".format(save_path))
+                        print(f"Saved filesystem copy to \"{save_path}\"")
                     except Exception as e:
                         print("Error copying file: {}".format(e))
                 else:
-                    print("Error: \"{}\" is not a valid path".format(save_path))
+                    print(f"Error: \"{save_path}\" is not a valid path")
             else:
                 print("Error: No path supplied. Usage is \'save <path>\'")
         else:
@@ -317,7 +320,7 @@ class LittleFSCLI(Cmd):
         try:
             self.fs = mount_fs(self.fs_filename)
         except FileNotFoundError as e:
-            print("mount: {}: Not a file".format(self.fs_filename))
+            print(f"mount: {self.fs_filename}: Not a file")
         except errors.LittleFSError as e:
             print(e)
 
@@ -332,7 +335,7 @@ class LittleFSCLI(Cmd):
             out_file = inp if inp else self.fs_filename
             with open(out_file, 'wb') as fh:
                 fh.write(self.fs.context.buffer)
-            print("Wrote filesystem to file: \"{}\"".format(out_file))
+            print(f"Wrote filesystem to file: \"{out_file}\"")
             self.fs = None
             self.cur_dir = '/'
         else:
@@ -345,7 +348,7 @@ class LittleFSCLI(Cmd):
         if self.fs:
             with open(self.fs_filename, 'wb') as fh:
                 fh.write(self.fs.context.buffer)
-            print("Wrote filesystem to file: \"{}\"".format(LOCAL_FILENAME))
+            print(f"Wrote filesystem to file: \"{LOCAL_FILENAME}\"")
         else:
             print("No filesystem mounted!")
 
@@ -359,7 +362,7 @@ class LittleFSCLI(Cmd):
                 self.fs.stat(path)
             except errors.LittleFSError as e:
                 if e.name == "ERR_NOENT":
-                    print("tree: {}: Not a directory".format(path))
+                    print(f"tree: {path}: Not a directory")
                 else:
                     print(e)
                 return
@@ -380,12 +383,12 @@ class LittleFSCLI(Cmd):
             ls_path = inp if inp else self.cur_dir
             try:
                 for dir_item in self.fs.scandir(ls_path):
-                    print("{} {:>8} {}".format("d" if dir_item.type == 34 else "-", dir_item.size, dir_item.name))
+                    print(f"{'d' if dir_item.type == 34 else '-'} {dir_item.size:>8} {dir_item.name}")
             except errors.LittleFSError as e:
                 if e.name == "ERR_NOENT":
-                    print("ls: {}: No such file or directory".format(ls_path))
+                    print(f"ls: {ls_path}: No such file or directory")
                 elif e.name == "ERR_NOTDIR":
-                    print("ls: {}: Not a directory".format(ls_path))
+                    print(f"ls: {ls_path}: Not a directory")
                 else:
                     print(e)
         else:
@@ -400,13 +403,13 @@ class LittleFSCLI(Cmd):
             try:
                 stat = self.fs.stat(inp)
                 if stat.type == 34:
-                    print("cat: {}: Is a directory")
+                    print(f"cat: {inp}: Is a directory")
                     return
                 size = stat.size
                 # print("Size of {}: {} bytes".format(inp, size))
             except errors.LittleFSError as e:
                 if e.name == "ERR_NOENT":
-                    print("ls: {}: No such file or directory".format(inp))
+                    print(f"ls: {inp}: No such file or directory")
                 else:
                     print(e)
                 return
@@ -432,9 +435,9 @@ class LittleFSCLI(Cmd):
                 self.fs.remove(inp)
             except errors.LittleFSError as e:
                 if e.name == "ERR_NOENT":
-                    print("ls: {}: No such file or directory".format(inp))
+                    print(f"ls: {inp}: No such file or directory")
                 elif e.name == "ERR_NOTEMPTY":
-                    print("ls: {}: Directory not empty".format(inp))
+                    print(f"ls: {inp}: Directory not empty")
                 else:
                     print(e)
                 return
@@ -462,7 +465,7 @@ class LittleFSCLI(Cmd):
                         if len(cur_dir_split) > 1:
                             cur_dir_split.pop()
                         else:
-                            print("cd: {}: No such file or directory".format(inp))
+                            print(f"cd: {inp}: No such file or directory")
                             return
                     else:
                         cur_dir_split.append(cd_dir)
@@ -474,12 +477,12 @@ class LittleFSCLI(Cmd):
                 if new_path_stat.type == 34:
                     self.cur_dir = new_path
                 else:
-                    print("cd: {}: Not a directory".format(new_path))
+                    print(f"cd: {new_path}: Not a directory")
             except errors.LittleFSError as e:
                 if e.name == "ERR_NOENT":
-                    print("cd: {}: No such file or directory".format(new_path))
+                    print(f"cd: {new_path}: No such file or directory")
                 else:
-                    print("cd: {}: Error: {}".format(new_path, e))
+                    print(f"cd: {new_path}: Error: {e}")
 
             # print("New Directory: \"{}\"".format(self.cur_dir))
         else:
@@ -495,7 +498,7 @@ class LittleFSCLI(Cmd):
                 try:
                     self.fs.mkdir(dir_to_make)
                 except FileExistsError as e:
-                    print("mkdir: {}: Directory exists".format(dir_to_make))
+                    print(f"mkdir: {dir_to_make}: Directory exists")
                 except errors.LittleFSError as e:
                     print(e)
             else:
@@ -521,18 +524,18 @@ class LittleFSCLI(Cmd):
                             print("Copied {} bytes from {} to {}".format(from_file_stat.size, paths[0], paths[1]))
                         except errors.LittleFSError as e:
                             if e.name == "ERR_NOENT":
-                                print("cp: {}: No file or directory".format(paths[1]))
+                                print(f"cp: {paths[1]}: No file or directory")
                             elif e.name == "ERR_ISDIR":
-                                print("cp: {}: Is a directory".format(paths[1]))
+                                print(f"cp: {paths[1]}: Is a directory")
                             else:
-                                print("cp: {}: Error: {}".format(paths[1], e))
+                                print(f"cp: {paths[1]}: Error: {e}")
                 except errors.LittleFSError as e:
                     if e.name == "ERR_ISDIR":
-                        print("cp: {}: Is a directory".format(paths[0]))
+                        print(f"cp: {paths[0]}: Is a directory")
                     elif e.name == "ERR_NOENT":
-                        print("cp: {}: No file or directory".format(paths[0]))
+                        print(f"cp: {paths[0]}: No file or directory")
                     else:
-                        print("cp: {}: {}".format(paths[0], e))
+                        print(f"cp: {paths[0]}: {e}")
 
             else:
                 print("usage: cp [path_from] [path_to]")
@@ -550,7 +553,7 @@ class LittleFSCLI(Cmd):
                     # Does the target file already exist? If so,
                     try:
                         self.fs.stat(paths[1])
-                        print("insert: {}: Target file already exists".format(paths[1]))
+                        print(f"insert: {paths[1]}: Target file already exists")
                         return
                     except errors.LittleFSError as e:
                         if e.name != "ERR_NOENT":
@@ -563,21 +566,21 @@ class LittleFSCLI(Cmd):
                             with self.fs.open(paths[1], 'wb') as to_file:
                                 for chunk in iter((lambda: from_file.read(256)), b''):
                                     to_file.write(chunk)
-                            print("Copied {} bytes: local:{} > littlefs:{}".format(size, os.path.realpath(from_file.name), paths[1]))
+                            print(f"Copied {size} bytes: local:{os.path.realpath(from_file.name)} > littlefs:{paths[1]}")
                         except errors.LittleFSError as e:
                             if e.name == "ERR_NOENT":
-                                print("insert: {}: Path does not exist — do you need to mkdir?".format(paths[1]))
+                                print(f"insert: {paths[1]}: Path does not exist — do you need to mkdir?")
                             elif e.name == "ERR_ISDIR":
-                                print("insert: {}: Is a directory".format(paths[1]))
+                                print(f"insert: {paths[1]}: Is a directory")
                             else:
-                                print("insert: {}: Error: {}".format(paths[1], e))
+                                print(f"insert: {paths[1]}: Error: {e}")
                 except errors.LittleFSError as e:
                     if e.name == "ERR_ISDIR":
-                        print("insert: {}: Is a directory".format(paths[0]))
+                        print(f"insert: {paths[0]}: Is a directory")
                     else:
-                        print("insert: {}: {}".format(paths[0], e))
+                        print(f"insert: {paths[0]}: {e}")
                 except FileNotFoundError as e:
-                    print("insert: {}: Not a file".format(paths[0]))
+                    print(f"insert: {paths[0]}: Not a file")
 
             else:
                 print("usage: cp [local_path] [path_to]")
@@ -602,23 +605,23 @@ class LittleFSCLI(Cmd):
                             with open(paths[1], 'wb') as to_file:
                                 for chunk in iter((lambda: from_file.read(256)), b''):
                                     to_file.write(chunk)
-                                print("Copied {} bytes: littlefs:{} > local:{}".format(size, paths[0], os.path.realpath(to_file.name)))
+                                print(f"Copied {size} bytes: littlefs:{paths[0]} > local:{os.path.realpath(to_file.name)}")
                         except errors.LittleFSError as e:
                             if e.name == "ERR_NOENT":
-                                print("insert: {}: Not a file".format(paths[1]))
+                                print(f"insert: {paths[1]}: Not a file")
                             elif e.name == "ERR_ISDIR":
-                                print("insert: {}: Is a directory".format(paths[1]))
+                                print(f"insert: {paths[1]}: Is a directory")
                             else:
-                                print("insert: {}: Error: {}".format(paths[1], e))
+                                print(f"insert: {paths[1]}: Error: {e}")
                         except FileExistsError:
-                            print("insert: {}: Destination file exists".format(paths[1]))
+                            print(f"insert: {paths[1]}: Destination file exists")
                 except errors.LittleFSError as e:
                     if e.name == "ERR_ISDIR":
-                        print("insert: {}: Is a directory".format(paths[0]))
+                        print(f"insert: {paths[0]}: Is a directory")
                     else:
-                        print("insert: {}: {}".format(paths[0], e))
+                        print(f"insert: {paths[0]}: {e}")
                 except FileNotFoundError as e:
-                    print("insert: {}: Not a file".format(paths[0]))
+                    print(f"insert: {paths[0]}: Not a file")
 
             else:
                 print("usage: cp [local_path] [path_to]")
@@ -632,7 +635,7 @@ class LittleFSCLI(Cmd):
         if inp == 'x' or inp == 'q':
             return self.do_exit(inp)
 
-        print("Unknown Command: \"{}\"".format(inp))
+        print(f"Unknown Command: \"{inp}\"")
 
     do_EOF = do_exit
     help_EOF = help_exit
